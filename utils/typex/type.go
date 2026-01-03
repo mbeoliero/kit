@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strconv"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/bytedance/sonic"
 )
 
 func ToAny[T any](value string) T {
@@ -73,14 +73,14 @@ func ToAnyE[T any](value string) (T, error) {
 		t = any(v).(T)
 	case []any:
 		var v []any
-		err = jsoniter.Unmarshal([]byte(value), &v)
+		err = sonic.UnmarshalString(value, &v)
 		t = any(v).(T)
 	case map[string]any:
 		var v map[string]any
-		err = jsoniter.Unmarshal([]byte(value), &v)
+		err = sonic.UnmarshalString(value, &v)
 		t = any(v).(T)
 	default:
-		err = jsoniter.Unmarshal([]byte(value), &t)
+		err = sonic.UnmarshalString(value, &t)
 	}
 	return t, err
 }
@@ -136,7 +136,7 @@ func ToString(value any) string {
 			return reflect.ValueOf(value).String()
 		default:
 		}
-		bs, _ := jsoniter.Marshal(v)
-		return string(bs)
+		s, _ := sonic.MarshalString(v)
+		return s
 	}
 }

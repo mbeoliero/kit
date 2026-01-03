@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/bytedance/sonic"
 	"github.com/sirupsen/logrus"
 )
 
@@ -67,7 +67,7 @@ func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 		}
 	}
 	if customMap != nil {
-		bytes, _ := jsoniter.Marshal(customMap)
+		bytes, _ := sonic.Marshal(customMap)
 		custom = string(bytes)
 	}
 	// time, level, pid, thread id, trace_id, file_loc, :, context info(opt), msg(opt)

@@ -1,8 +1,10 @@
 package jsonx
 
-import jsoniter "github.com/json-iterator/go"
+import (
+	"github.com/bytedance/sonic"
+)
 
 func MarshalToString(v any) string {
-	ret, _ := jsoniter.Marshal(v)
-	return string(ret)
+	ret, _ := sonic.MarshalString(v)
+	return ret
 }

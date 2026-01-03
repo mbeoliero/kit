@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strconv"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/bytedance/sonic"
 	"github.com/mbeoliero/kit/log"
 	"github.com/mbeoliero/kit/utils/jsonx"
 	"resty.dev/v3"
@@ -49,7 +49,7 @@ func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) (e
 	log.CtxInfo(ctx, "httpx client Post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
 
 	if len(res.String()) > 0 && bindResp != nil {
-		if err = jsoniter.Unmarshal([]byte(res.String()), bindResp); err != nil {
+		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
 			log.CtxError(ctx, "httpx client Post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
 			return fmt.Errorf("failed to unmarshal response body: %v", err)
 		}
@@ -76,7 +76,7 @@ func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) (er
 	log.CtxInfo(ctx, "httpx client Get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
 
 	if len(res.String()) > 0 && bindResp != nil {
-		if err = jsoniter.Unmarshal([]byte(res.String()), bindResp); err != nil {
+		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
 			log.CtxError(ctx, "httpx client Get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
 			return fmt.Errorf("failed to unmarshal response body: %v", err)
 		}
@@ -99,13 +99,13 @@ func toUrlValues(req any) (url.Values, error) {
 
 	m, ok := req.(map[string]any)
 	if !ok {
-		b, err := jsoniter.Marshal(req)
+		b, err := sonic.Marshal(req)
 		if err != nil {
 			return nil, err
 		}
 
 		m = make(map[string]any)
-		if err = jsoniter.Unmarshal(b, &m); err != nil {
+		if err = sonic.Unmarshal(b, &m); err != nil {
 			return nil, err
 		}
 	}
