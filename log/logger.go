@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	logger   Logger
-	logLevel Level
+	logger        Logger
+	defaultLogger klog.FullLogger
+	logLevel      Level
 )
 
 // Set custom format
@@ -23,6 +24,11 @@ func init() {
 	logLevel = LevelDebug
 
 	logger.Logger.Logger().AddHook(&traceIdHook{})
+	defaultLogger = logger
+}
+
+func SetLogger(fullLogger klog.FullLogger) {
+	defaultLogger = fullLogger
 }
 
 func SetProdEnv() {
@@ -81,7 +87,7 @@ func SetLevel(level Level) {
 	default:
 		lv = klog.LevelWarn
 	}
-	logger.SetLevel(lv)
+	defaultLogger.SetLevel(lv)
 	logLevel = level
 }
 
@@ -102,82 +108,82 @@ func SetLogFile(fileName string, ops ...LogfileOption) {
 	}
 
 	mw := io.MultiWriter(rollingWriter, os.Stdout)
-	logger.SetOutput(mw)
+	defaultLogger.SetOutput(mw)
 }
 
 // SetOutput sets the output of default logger. By default, it is stderr.
 func SetOutput(w io.Writer) {
-	logger.SetOutput(w)
+	defaultLogger.SetOutput(w)
 }
 
 // Fatal calls the default logger's Fatalf method and then os.Exit(1).
 func Fatal(format string, v ...interface{}) {
-	logger.Fatalf(format, v...)
+	defaultLogger.Fatalf(format, v...)
 }
 
 // Error calls the default logger's Errorf method.
 func Error(format string, v ...interface{}) {
-	logger.Errorf(format, v...)
+	defaultLogger.Errorf(format, v...)
 }
 
 // Warn calls the default logger's Warnf method.
 func Warn(format string, v ...interface{}) {
-	logger.Warnf(format, v...)
+	defaultLogger.Warnf(format, v...)
 }
 
 // Notice calls the default logger's Noticef method.
 func Notice(format string, v ...interface{}) {
-	logger.Noticef(format, v...)
+	defaultLogger.Noticef(format, v...)
 }
 
 // Info calls the default logger's Infof method.
 func Info(format string, v ...interface{}) {
-	logger.Infof(format, v...)
+	defaultLogger.Infof(format, v...)
 }
 
 // Debug calls the default logger's Debugf method.
 func Debug(format string, v ...interface{}) {
-	logger.Debugf(format, v...)
+	defaultLogger.Debugf(format, v...)
 }
 
 // Trace calls the default logger's Tracef method.
 func Trace(format string, v ...interface{}) {
-	logger.Tracef(format, v...)
+	defaultLogger.Tracef(format, v...)
 }
 
 // CtxFatal calls the default logger's CtxFatalf method and then os.Exit(1).
 func CtxFatal(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxFatalf(ctx, format, v...)
+	defaultLogger.CtxFatalf(ctx, format, v...)
 }
 
 // CtxError calls the default logger's CtxErrorf method.
 func CtxError(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxErrorf(ctx, format, v...)
+	defaultLogger.CtxErrorf(ctx, format, v...)
 }
 
 // CtxWarn calls the default logger's CtxWarnf method.
 func CtxWarn(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxWarnf(ctx, format, v...)
+	defaultLogger.CtxWarnf(ctx, format, v...)
 }
 
 // CtxNotice calls the default logger's CtxNoticef method.
 func CtxNotice(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxNoticef(ctx, format, v...)
+	defaultLogger.CtxNoticef(ctx, format, v...)
 }
 
 // CtxInfo calls the default logger's CtxInfof method.
 func CtxInfo(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxInfof(ctx, format, v...)
+	defaultLogger.CtxInfof(ctx, format, v...)
 }
 
 // CtxDebug calls the default logger's CtxDebugf method.
 func CtxDebug(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxDebugf(ctx, format, v...)
+	defaultLogger.CtxDebugf(ctx, format, v...)
 }
 
 // CtxTrace calls the default logger's CtxTracef method.
 func CtxTrace(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxTracef(ctx, format, v...)
+	defaultLogger.CtxTracef(ctx, format, v...)
 }
 
 func GetLogLevel() Level {
