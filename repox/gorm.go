@@ -1,6 +1,5 @@
 package repox
 
-import "C"
 import (
 	"context"
 
