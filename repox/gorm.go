@@ -114,7 +114,13 @@ func (r *GormRepo[T]) Find(ctx context.Context, filter any, opts ...IList[FindOp
 func (r *GormRepo[T]) Count(ctx context.Context, filter any, opts ...IList[FindOptions]) (int64, error) {
 	g := gorm.G[T](r.getDB(ctx))
 	chain := r.applyFilterToChain(g, filter)
-	return chain.Count(ctx, "id")
+
+	o := NewOptions(opts...)
+	column := "id"
+	if len(o.ReturnFields) > 0 {
+		column = "*"
+	}
+	return chain.Count(ctx, column)
 }
 
 // applyFilterToChain 应用过滤条件到链式调用
