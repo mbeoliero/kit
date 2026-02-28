@@ -14,12 +14,20 @@ import (
 )
 
 type Client struct {
-	cli *resty.Client
+	disableLog bool
+	cli        *resty.Client
 }
 
 var GetClient = func() *Client {
 	return &Client{
 		cli: resty.New(),
+	}
+}
+
+var GetNoLogClient = func() *Client {
+	return &Client{
+		cli:        resty.New(),
+		disableLog: true,
 	}
 }
 
@@ -46,7 +54,9 @@ func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) (e
 	}
 
 	resp := res.String()
-	log.CtxInfo(ctx, "httpx client Post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+	if !i.disableLog {
+		log.CtxInfo(ctx, "httpx client Post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+	}
 
 	if len(res.String()) > 0 && bindResp != nil {
 		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
@@ -73,7 +83,9 @@ func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) (er
 	}
 
 	resp := res.String()
-	log.CtxInfo(ctx, "httpx client Get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+	if !i.disableLog {
+		log.CtxInfo(ctx, "httpx client Get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+	}
 
 	if len(res.String()) > 0 && bindResp != nil {
 		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
