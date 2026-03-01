@@ -49,7 +49,9 @@ func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) (e
 	res, err := httpReq.
 		Post(url)
 	if err != nil {
-		log.CtxError(ctx, "httpx client Post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+		if !i.disableLog {
+			log.CtxError(ctx, "httpx client Post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+		}
 		return err
 	}
 
@@ -78,7 +80,9 @@ func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) (er
 	res, err := httpReq.
 		Get(url)
 	if err != nil {
-		log.CtxError(ctx, "httpx client Get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+		if !i.disableLog {
+			log.CtxError(ctx, "httpx client Get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+		}
 		return err
 	}
 
