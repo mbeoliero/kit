@@ -25,6 +25,36 @@ type Logger struct {
 	loggerType LoggerType
 }
 
+func (l *Logger) SetLevel(level klog.Level) {
+	if l.loggerType == LoggerTypeZerolog {
+		if zl, ok := l.FullLogger.(*kitexzerolog.Logger); ok {
+			updated := zl.Logger().Level(toZerologLevel(level))
+			*zl.Logger() = updated
+			return
+		}
+	}
+	l.FullLogger.SetLevel(level)
+}
+
+func toZerologLevel(level klog.Level) zerolog.Level {
+	switch level {
+	case klog.LevelTrace:
+		return zerolog.TraceLevel
+	case klog.LevelDebug:
+		return zerolog.DebugLevel
+	case klog.LevelInfo:
+		return zerolog.InfoLevel
+	case klog.LevelWarn, klog.LevelNotice:
+		return zerolog.WarnLevel
+	case klog.LevelError:
+		return zerolog.ErrorLevel
+	case klog.LevelFatal:
+		return zerolog.FatalLevel
+	default:
+		return zerolog.WarnLevel
+	}
+}
+
 // Set custom format
 func init() {
 	logger = newLogger()
