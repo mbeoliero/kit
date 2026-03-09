@@ -151,7 +151,7 @@ func (r *MongoRepo[T]) UpdateMany(ctx context.Context, filter any, update map[st
 }
 
 // UpsertOne 插入或更新单条记录，返回是否是插入操作
-func (r *MongoRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (bool, error) {
+func (r *MongoRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (*UpsertResult, error) {
 	// 根据冲突字段构建 filter
 	filter := bson.M{}
 	for col, val := range opt.ConflictKvs {
@@ -173,10 +173,13 @@ func (r *MongoRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOption
 	updateOpts := options.UpdateOne().SetUpsert(true)
 	result, err := r.coll.UpdateOne(ctx, filter, update, updateOpts)
 	if err != nil {
-		return false, wrapError(err)
+		return nil, wrapError(err)
 	}
 	// UpsertedCount > 0 表示是插入操作
-	return result.UpsertedCount > 0, nil
+	return &UpsertResult{
+		IsInserted:   result.UpsertedCount > 0,
+		RowsAffected: result.UpsertedCount + result.ModifiedCount,
+	}, nil
 }
 
 // DeleteOne 删除单条记录

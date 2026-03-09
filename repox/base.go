@@ -86,6 +86,11 @@ type UpsertOptions struct {
 	Inc         map[string]int64 // 自增
 }
 
+type UpsertResult struct {
+	IsInserted   bool
+	RowsAffected int64
+}
+
 type ICreator[T any] interface {
 	Create(context.Context, *T) error
 	CreateMany(context.Context, []*T) error
@@ -105,7 +110,7 @@ type IUpdater[T any] interface {
 	Update(context.Context, *T) error
 	Incr(ctx context.Context, filter any, incr map[string]int, opts ...IList[UpdateOptions]) error
 	UpdateOne(ctx context.Context, filter any, update map[string]any, opts ...IList[UpdateOptions]) (*UpdateResult, error)
-	UpsertOne(ctx context.Context, create T, opt UpsertOptions) (bool, error)
+	UpsertOne(ctx context.Context, create T, opt UpsertOptions) (*UpsertResult, error)
 	UpdateMany(ctx context.Context, filter any, update map[string]any, opts ...IList[UpdateOptions]) (*UpdateResult, error)
 }
 

@@ -191,7 +191,7 @@ func (r *GormRepo[T]) UpdateMany(ctx context.Context, filter any, update map[str
 }
 
 // UpsertOne 插入或更新单条记录，返回是否是插入操作
-func (r *GormRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (bool, error) {
+func (r *GormRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (*UpsertResult, error) {
 	columns := make([]clause.Column, 0, len(opt.ConflictKvs))
 	for k := range opt.ConflictKvs {
 		columns = append(columns, clause.Column{Name: k})
@@ -210,14 +210,13 @@ func (r *GormRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions
 		DoUpdates: clause.Assignments(doUpdates),
 	}).Create(&create)
 	if ret.Error != nil {
-		return false, wrapError(ret.Error)
+		return nil, wrapError(ret.Error)
 	}
-	//err = gorm.G[T](r.getDB(ctx), clause.OnConflict{
-	//	Columns:   columns,
-	//	DoUpdates: clause.Assignments(doUpdates),
-	//}).Create(ctx, &create)
 
-	return ret.RowsAffected == 1, nil
+	return &UpsertResult{
+		IsInserted:   ret.RowsAffected == 1,
+		RowsAffected: ret.RowsAffected,
+	}, nil
 }
 
 // buildUpdateG 构建带更新选项的泛型实例
