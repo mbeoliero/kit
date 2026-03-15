@@ -50,19 +50,19 @@ func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) (e
 		Post(url)
 	if err != nil {
 		if !i.disableLog {
-			log.CtxError(ctx, "httpx client Post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+			log.CtxError(ctx, "httpx client post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
 		}
 		return err
 	}
 
 	resp := res.String()
 	if !i.disableLog {
-		log.CtxInfo(ctx, "httpx client Post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+		log.CtxInfo(ctx, "httpx client post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
 	}
 
-	if len(res.String()) > 0 && bindResp != nil {
-		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
-			log.CtxError(ctx, "httpx client Post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+	if len(resp) > 0 && bindResp != nil {
+		if err = sonic.UnmarshalString(resp, bindResp); err != nil {
+			log.CtxError(ctx, "httpx client post url [%s] resp: %s, err: %v", httpReq.URL, resp, err)
 			return fmt.Errorf("failed to unmarshal response body: %v", err)
 		}
 	}
@@ -81,19 +81,19 @@ func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) (er
 		Get(url)
 	if err != nil {
 		if !i.disableLog {
-			log.CtxError(ctx, "httpx client Get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+			log.CtxError(ctx, "httpx client get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
 		}
 		return err
 	}
 
 	resp := res.String()
 	if !i.disableLog {
-		log.CtxInfo(ctx, "httpx client Get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+		log.CtxInfo(ctx, "httpx client get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
 	}
 
-	if len(res.String()) > 0 && bindResp != nil {
-		if err = sonic.UnmarshalString(res.String(), bindResp); err != nil {
-			log.CtxError(ctx, "httpx client Get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+	if len(resp) > 0 && bindResp != nil {
+		if err = sonic.UnmarshalString(resp, bindResp); err != nil {
+			log.CtxError(ctx, "httpx client get url [%s] resp: %v, err: %v", httpReq.URL, resp, err)
 			return fmt.Errorf("failed to unmarshal response body: %v", err)
 		}
 	}
