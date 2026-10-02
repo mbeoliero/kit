@@ -1,6 +1,6 @@
 package log
 
-import "github.com/natefinch/lumberjack"
+import "gopkg.in/natefinch/lumberjack.v2"
 
 // LogfileOption is the only way to config log file option.
 type LogfileOption interface {

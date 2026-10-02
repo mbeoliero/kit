@@ -2,9 +2,9 @@ package redisx
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	"github.com/go-faster/errors"
 	"github.com/mbeoliero/kit/utils/typex"
 	"github.com/redis/go-redis/v9"
 )

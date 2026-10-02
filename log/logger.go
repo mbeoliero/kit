@@ -6,12 +6,12 @@ import (
 	"os"
 
 	"github.com/cloudwego/kitex/pkg/klog"
-	"github.com/natefinch/lumberjack"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
-	builtin       = newTextLogger(os.Stdout)
-	logger        = &Logger{FullLogger: builtin}
+	builtin                       = newTextLogger(os.Stdout)
+	logger                        = &Logger{FullLogger: builtin}
 	defaultLogger klog.FullLogger = logger
 	logLevel      Level
 )

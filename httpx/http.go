@@ -104,11 +104,11 @@ func (i *Client) do(ctx context.Context, httpReq *resty.Request, method, rawUrl 
 		log.CtxDebug(ctx, "httpx %s %s req: %s, resp: %s", method, target, truncate(jsonx.MarshalToString(req)), truncate(string(body)))
 	}
 	if len(body) > 0 && bindResp != nil {
-		if err := json.Unmarshal(body, bindResp); err != nil && res.IsSuccess() {
+		if err := json.Unmarshal(body, bindResp); err != nil && res.IsStatusSuccess() {
 			return fmt.Errorf("httpx %s %s decode response: %w", method, target, err)
 		}
 	}
-	if !res.IsSuccess() {
+	if !res.IsStatusSuccess() {
 		return &StatusError{Method: method, Url: target, StatusCode: res.StatusCode(), Body: string(body)}
 	}
 	return nil
