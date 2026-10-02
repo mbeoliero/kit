@@ -1,11 +1,10 @@
 package typex
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
-
-	"github.com/bytedance/sonic"
 )
 
 func ToAny[T any](value string) T {
@@ -13,76 +12,57 @@ func ToAny[T any](value string) T {
 	return t
 }
 
+// ToAnyE parses value into T. Integers are range checked for T's width; other types
+// are decoded as JSON. An empty value yields T's zero value.
 func ToAnyE[T any](value string) (T, error) {
 	var t T
-	var err error
 	if len(value) == 0 {
-		return t, err
+		return t, nil
 	}
-
-	switch any(t).(type) {
-	case string:
-		t = any(value).(T)
-	case int:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(v).(T)
-	case int8:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(int8(v)).(T)
-	case int16:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(int16(v)).(T)
-	case int32:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(int32(v)).(T)
-	case int64:
-		var v int64
-		v, err = strconv.ParseInt(value, 10, 64)
-		t = any(v).(T)
-	case uint:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(uint(v)).(T)
-	case uint8:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(uint8(v)).(T)
-	case uint16:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(uint16(v)).(T)
-	case uint32:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(uint32(v)).(T)
-	case uint64:
-		var v int
-		v, err = strconv.Atoi(value)
-		t = any(uint64(v)).(T)
-	case float32:
+	var err error
+	switch p := any(&t).(type) {
+	case *string:
+		*p = value
+	case *int:
+		*p, err = parseInt[int](value, strconv.IntSize)
+	case *int8:
+		*p, err = parseInt[int8](value, 8)
+	case *int16:
+		*p, err = parseInt[int16](value, 16)
+	case *int32:
+		*p, err = parseInt[int32](value, 32)
+	case *int64:
+		*p, err = parseInt[int64](value, 64)
+	case *uint:
+		*p, err = parseUint[uint](value, strconv.IntSize)
+	case *uint8:
+		*p, err = parseUint[uint8](value, 8)
+	case *uint16:
+		*p, err = parseUint[uint16](value, 16)
+	case *uint32:
+		*p, err = parseUint[uint32](value, 32)
+	case *uint64:
+		*p, err = parseUint[uint64](value, 64)
+	case *float32:
 		var v float64
-		v, err = strconv.ParseFloat(value, 64)
-		t = any(float32(v)).(T)
-	case float64:
-		var v float64
-		v, err = strconv.ParseFloat(value, 64)
-		t = any(v).(T)
-	case []any:
-		var v []any
-		err = sonic.UnmarshalString(value, &v)
-		t = any(v).(T)
-	case map[string]any:
-		var v map[string]any
-		err = sonic.UnmarshalString(value, &v)
-		t = any(v).(T)
+		v, err = strconv.ParseFloat(value, 32)
+		*p = float32(v)
+	case *float64:
+		*p, err = strconv.ParseFloat(value, 64)
 	default:
-		err = sonic.UnmarshalString(value, &t)
+		err = json.Unmarshal([]byte(value), &t)
 	}
 	return t, err
+}
+
+func parseInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](value string, bits int) (T, error) {
+	v, err := strconv.ParseInt(value, 10, bits)
+	return T(v), err
+}
+
+func parseUint[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](value string, bits int) (T, error) {
+	v, err := strconv.ParseUint(value, 10, bits)
+	return T(v), err
 }
 
 func ToString(value any) string {
@@ -114,7 +94,7 @@ func ToString(value any) string {
 	case uintptr:
 		return strconv.FormatUint(uint64(v), 10)
 	case float32:
-		return strconv.FormatFloat(float64(v), 'g', -1, 64)
+		return strconv.FormatFloat(float64(v), 'g', -1, 32)
 	case float64:
 		return strconv.FormatFloat(v, 'g', -1, 64)
 	case []byte:
@@ -136,7 +116,7 @@ func ToString(value any) string {
 			return reflect.ValueOf(value).String()
 		default:
 		}
-		s, _ := sonic.MarshalString(v)
-		return s
+		b, _ := json.Marshal(v)
+		return string(b)
 	}
 }

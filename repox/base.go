@@ -5,7 +5,13 @@ import (
 	"errors"
 )
 
-var DataNotFound = errors.New("data not found")
+// ErrDataNotFound reports that no record matched; both GORM and MongoDB not-found errors map to it.
+var ErrDataNotFound = errors.New("data not found")
+
+// DataNotFound is the original name of ErrDataNotFound.
+//
+// Deprecated: use ErrDataNotFound.
+var DataNotFound = ErrDataNotFound
 
 // TxFunc 事务函数类型
 type TxFunc func(ctx context.Context) error

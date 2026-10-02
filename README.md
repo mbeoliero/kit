@@ -146,9 +146,10 @@ func cacheValue(ctx context.Context, cli redis.UniversalClient) error {
 
 基础设施连接初始化：
 
-- MySQL/GORM：单实例和读写分离模式，连接池配置，OpenTelemetry tracing 注入，SQL 日志包装。
-- MongoDB：连接初始化，TLS 选项，OpenTelemetry command monitor。
-- Redis：单实例和 Cluster 初始化，TLS、连接池、Tracing 和命令日志 hook。
+- MySQL/GORM：单实例和读写分离模式，连接池配置，OpenTelemetry tracing 注入；成功 SQL 记 Debug，失败和慢查询（≥1s）记 Warn，`disable_log` 关闭成功 SQL 日志。
+- MongoDB：连接初始化（凭证在 URI 中转义），TLS 选项；命令日志串在 OpenTelemetry command monitor 之后，tracing 照常生效。
+- Redis：单实例和 Cluster 初始化，TLS 默认校验证书（`tls_insecure_skip_verify` 仅用于测试环境），连接池、Tracing，`enable_log` 以 Debug 记录命令。
+- 初始化日志只记录地址和库名，不输出密码或 DSN。
 
 ### `repox`
 
@@ -156,7 +157,7 @@ func cacheValue(ctx context.Context, cli redis.UniversalClient) error {
 
 - `Create` / `CreateMany`
 - `FindOne` / `Find` / `Count`
-- `Update` / `UpdateOne` / `UpdateMany` / `Incr` / `UpsertOne`
+- `Update`（GORM 只写非零字段）/ `UpdateOne`（至多一行）/ `UpdateMany` / `Incr` / `UpsertOne`
 - `DeleteOne` / `DeleteMany`
 - `Transaction`
 - `Native` 获取底层数据库对象
@@ -168,7 +169,7 @@ func cacheValue(ctx context.Context, cli redis.UniversalClient) error {
 Redis 常用数据结构和操作封装：
 
 - KV：`Get`、`Set`、`Del`
-- Counter：`Incr`、`Decr`
+- Counter：`Incr`、`Decr`（过期时间只在 key 尚无 TTL 时设置；`expire <= 0` 不设置 TTL）
 - HashMap：泛型字段和值读写、批量读写、自增、过期时间维护
 - ZQueue：基于 Sorted Set 的队列封装，支持按分数范围查询、分页、弹出和删除
 
@@ -177,19 +178,20 @@ Redis 常用数据结构和操作封装：
 基于 `resty.dev/v3` 的轻量 HTTP 客户端：
 
 - JSON `POST`
-- query 参数 `GET`
-- Header 和 Bearer token 设置
-- 请求与响应日志
+- query 参数 `GET`（int64 精确编码）
+- Header 和 Bearer token 设置，按 `Client` 隔离；底层连接池全局复用
+- 非 2xx 返回 `*httpx.StatusError`，响应体仍会解析到返回值
+- Info 记录方法、URL（去掉 query）、状态码和耗时；请求与响应体在 Debug 级别截断记录
 
 ### `log`
 
 面向 CloudWeGo Kitex/Hertz 的日志封装：
 
-- 默认 zerolog 实现，可切换 logrus
-- 统一的 `Fatal`、`Error`、`Warn`、`Notice`、`Info`、`Debug`、`Trace` 方法
-- Context 日志字段追加
+- 内置文本格式：`时间(毫秒) 级别 pid gid trace_id 调用位置 {context 字段} : 消息`，trace_id 取自 OTel span
+- 统一的 `Fatal`、`Error`、`Warn`、`Notice`、`Info`、`Debug`、`Trace` 方法；Error 及以上会把正在记录的 span 标记为错误
+- Context 日志字段追加（写时复制，不修改父 context）
+- `AddSink` 把日志同时交给其他目的地（如 OTLP 导出），本库不依赖具体导出实现
 - lumberjack 日志滚动文件输出
-- 生产环境错误日志 Prometheus counter
 - Kitex 和 Hertz logger 接入
 
 ### `utils`
@@ -197,7 +199,7 @@ Redis 常用数据结构和操作封装：
 基础工具包：
 
 - `utils/typex`：字符串与泛型类型互转
-- `utils/jsonx`：基于 sonic 的 JSON 字符串序列化
+- `utils/jsonx`：基于标准库 encoding/json 的 JSON 字符串序列化
 - `utils/filex`：当前文件路径获取
 - `utils/generic`：泛型 `Once`
 

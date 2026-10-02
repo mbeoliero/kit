@@ -1,6 +1,10 @@
 package builder
 
 import (
+	"maps"
+	"slices"
+	"strings"
+
 	"gorm.io/gorm/clause"
 )
 
@@ -79,8 +83,12 @@ func (b *GormQueryBuilder) Like(key string, value string, mode MatchMode) QBuild
 	return b
 }
 
-// buildPattern 构建 MySQL LIKE 模式
+// likeEscaper treats the user value literally; MySQL's default LIKE escape is backslash.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+// buildPattern 构建 MySQL LIKE 模式，value 中的 % 和 _ 按字面匹配
 func (b *GormQueryBuilder) buildPattern(value string, mode MatchMode) string {
+	value = likeEscaper.Replace(value)
 	switch mode {
 	case MatchStartsWith:
 		return value + "%"
@@ -109,10 +117,10 @@ func (b *GormQueryBuilder) Or(conditions ...any) QBuilder {
 func (b *GormQueryBuilder) Build() any {
 	var exprs []clause.Expression
 
-	// 处理字段条件
-	for field, conditions := range b.conditions.Fields {
+	// 处理字段条件，按字段名排序使生成的 SQL 稳定
+	for _, field := range slices.Sorted(maps.Keys(b.conditions.Fields)) {
 		col := clause.Column{Name: field}
-		for _, cond := range conditions {
+		for _, cond := range b.conditions.Fields[field] {
 			exprs = append(exprs, b.buildConditionExpr(col, cond))
 		}
 	}

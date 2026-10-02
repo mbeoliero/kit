@@ -2,13 +2,9 @@ package generic
 
 import "sync"
 
+// Once returns a function that calls f once and then returns its result.
+//
+// Deprecated: use sync.OnceValue.
 func Once[T any](f func() T) func() T {
-	var (
-		once sync.Once
-		v    T
-	)
-	return func() T {
-		once.Do(func() { v = f() })
-		return v
-	}
+	return sync.OnceValue(f)
 }

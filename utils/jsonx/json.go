@@ -1,10 +1,12 @@
 package jsonx
 
-import (
-	"github.com/bytedance/sonic"
-)
+import "encoding/json"
 
+// MarshalToString returns v as JSON, or "" when v cannot be encoded.
 func MarshalToString(v any) string {
-	ret, _ := sonic.MarshalString(v)
-	return ret
+	ret, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(ret)
 }

@@ -37,7 +37,7 @@ func InitGorm(m MysqlConfig) (*gorm.DB, error) {
 	if m.Dbname == "" {
 		return nil, errors.New("db name is empty, please check")
 	}
-	log.Info("init gorm start: %+v", m)
+	log.Info("init gorm start: path=%s write_path=%s read_path=%s db=%s", m.Path, m.WritePath, m.ReadPath, m.Dbname)
 	var db *gorm.DB
 	var err error
 	if m.Path != "" {
@@ -56,7 +56,10 @@ func InitGorm(m MysqlConfig) (*gorm.DB, error) {
 	injectMysqlTracing(!m.DisableTrace, db)
 	log.Info("init grom inject mysql tracing done ")
 
-	sqlDB, _ := db.DB()
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
 	sqlDB.SetMaxIdleConns(m.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(m.MaxOpenConns)
 	if m.ConnMaxLifetime > 0 {
@@ -86,7 +89,7 @@ func readWriteSplitMode(m MysqlConfig) (*gorm.DB, error) {
 	for _, v := range strings.Split(m.ReadPath, ",") {
 		cfg.Replicas = append(cfg.Replicas, mysql.New(buildDsn(m.Username, m.Password, v, m.Dbname, m.Config)))
 	}
-	log.Info("start to register db resolver %+v", cfg)
+	log.Info("register db resolver: sources=%d replicas=%d", len(cfg.Sources), len(cfg.Replicas))
 
 	resolver := dbresolver.Register(cfg).SetMaxOpenConns(m.MaxOpenConns).SetMaxIdleConns(m.MaxIdleConns)
 	if m.ConnMaxLifetime > 0 {
@@ -101,9 +104,7 @@ func readWriteSplitMode(m MysqlConfig) (*gorm.DB, error) {
 }
 
 func singleMode(m MysqlConfig) (*gorm.DB, error) {
-	mysqlConfig := buildDsn(m.Username, m.Password, m.Path, m.Dbname, m.Config)
-	log.Info("init gorm mysqlConfig: %+v", mysqlConfig)
-	db, err := gorm.Open(mysql.New(mysqlConfig))
+	db, err := gorm.Open(mysql.New(buildDsn(m.Username, m.Password, m.Path, m.Dbname, m.Config)))
 	if err != nil {
 		log.Error("gorm init db err %+v", err)
 		return nil, err
@@ -132,7 +133,6 @@ func injectMysqlTracing(enableTrace bool, db *gorm.DB) {
 			log.Info("inject mysql tracing plugin")
 		}
 	}
-	return
 }
 
 func AddTraceLogger(db *gorm.DB, disableLog bool) *gorm.DB {
@@ -149,28 +149,25 @@ type traceLogger struct {
 	disableLog bool
 }
 
-// Trace implement logger interface
+// slowQuery is logged at warn level even when successful SQL logging is disabled.
+const slowQuery = time.Second
+
+// Trace logs successful SQL at debug level unless disabled; failures and slow queries
+// always log at warn level.
 func (l *traceLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	elapsed := time.Since(begin)
-	sql, rows := fc()
-
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = nil
 	}
-
-	if !l.disableLog {
-		if err == nil {
-			log.CtxInfo(ctx, "[%v][rows:%v] %s", elapsed, rows, sql)
-		} else {
-			log.CtxWarn(ctx, "[%v][rows:%v] %s, err %+v", elapsed, rows, sql, err)
-		}
-	} else {
-		if err == nil {
-			log.CtxDebug(ctx, "[%v][rows:%v] %s", elapsed, rows, sql)
-		} else {
-			log.CtxError(ctx, "[%v][rows:%v] %s, err %+v", elapsed, rows, sql, err)
-		}
+	switch {
+	case err != nil:
+		sql, rows := fc()
+		log.CtxWarn(ctx, "[%v][rows:%v] %s, err %+v", elapsed, rows, sql, err)
+	case elapsed >= slowQuery:
+		sql, rows := fc()
+		log.CtxWarn(ctx, "[slow %v][rows:%v] %s", elapsed, rows, sql)
+	case !l.disableLog:
+		sql, rows := fc()
+		log.CtxDebug(ctx, "[%v][rows:%v] %s", elapsed, rows, sql)
 	}
-
-	addDbMetrics(mysqlDb, elapsed.Milliseconds(), err)
 }

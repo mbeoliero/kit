@@ -7,20 +7,18 @@ import (
 	"strings"
 )
 
+var pid = strconv.Itoa(os.Getpid())
+
 func GetPID() string {
-	return strconv.FormatInt(int64(os.Getpid()), 10)
+	return pid
 }
 
 func GetGID() string {
-	defer func() {
-		_ = recover()
-	}()
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
-	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
-	id, err := strconv.Atoi(idField)
-	if err != nil {
-		return "-"
+	idField, _, _ := strings.Cut(strings.TrimPrefix(string(buf[:n]), "goroutine "), " ")
+	if _, err := strconv.ParseUint(idField, 10, 64); err != nil {
+		return placeholder
 	}
-	return strconv.FormatInt(int64(id), 10)
+	return idField
 }

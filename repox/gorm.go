@@ -79,7 +79,14 @@ func (r *GormRepo[T]) CreateMany(ctx context.Context, entities []*T) error {
 		return nil
 	}
 	v := FromPtrSlice(entities)
-	return wrapError(gorm.G[T](r.getDB(ctx)).CreateInBatches(ctx, &v, 10))
+	if err := gorm.G[T](r.getDB(ctx)).CreateInBatches(ctx, &v, 10); err != nil {
+		return wrapError(err)
+	}
+	// Generated keys and defaults land on the copies; hand them back to the caller.
+	for i := range v {
+		*entities[i] = v[i]
+	}
+	return nil
 }
 
 // FindOne 查询单条记录
@@ -115,12 +122,8 @@ func (r *GormRepo[T]) Count(ctx context.Context, filter any, opts ...IList[FindO
 	g := gorm.G[T](r.getDB(ctx))
 	chain := r.applyFilterToChain(g, filter)
 
-	o := NewOptions(opts...)
-	column := "id"
-	if len(o.ReturnFields) > 0 {
-		column = "*"
-	}
-	return chain.Count(ctx, column)
+	count, err := chain.Count(ctx, "*")
+	return count, wrapError(err)
 }
 
 // applyFilterToChain 应用过滤条件到链式调用
@@ -145,7 +148,8 @@ func (r *GormRepo[T]) applyFindOptionsToChain(chain gorm.ChainInterface[T], o *F
 	return chain
 }
 
-// Update 更新整个实体（通过主键）
+// Update 按主键更新实体的非零字段（GORM Updates 语义，零值字段不会写入）；
+// 实体未实现 GetId 时退化为 Save
 func (r *GormRepo[T]) Update(ctx context.Context, entity *T) error {
 	id, ok := getId(entity)
 	if ok {
@@ -165,32 +169,28 @@ func (r *GormRepo[T]) Incr(ctx context.Context, filter any, incr map[string]int,
 	return nil
 }
 
-// UpdateOne 更新单条记录
+// UpdateOne 更新至多一条匹配记录（MySQL UPDATE ... LIMIT 1）
 func (r *GormRepo[T]) UpdateOne(ctx context.Context, filter any, update map[string]any, opts ...IList[UpdateOptions]) (*UpdateResult, error) {
-	//g := r.buildUpdateG(opts...)
-	//chain := r.applyFilterToChain(g, filter)
 	var t T
-	chain := r.getDB(ctx).WithContext(ctx).Model(t).Clauses().Where(filter).Updates(update)
+	chain := r.getDB(ctx).WithContext(ctx).Model(t).Where(filter).Limit(1).Updates(update)
 	if chain.Error != nil {
 		return nil, wrapError(chain.Error)
 	}
-	return &UpdateResult{UpdateCount: chain.RowsAffected}, wrapError(nil)
+	return &UpdateResult{UpdateCount: chain.RowsAffected}, nil
 }
 
 // UpdateMany 更新多条记录
 func (r *GormRepo[T]) UpdateMany(ctx context.Context, filter any, update map[string]any, opts ...IList[UpdateOptions]) (*UpdateResult, error) {
-	//g := r.buildUpdateG(opts...)
-	//chain := r.applyFilterToChain(g, filter)
-
 	var t T
 	chain := r.getDB(ctx).WithContext(ctx).Model(t).Where(filter).Updates(update)
 	if chain.Error != nil {
 		return nil, wrapError(chain.Error)
 	}
-	return &UpdateResult{UpdateCount: chain.RowsAffected}, wrapError(nil)
+	return &UpdateResult{UpdateCount: chain.RowsAffected}, nil
 }
 
-// UpsertOne 插入或更新单条记录，返回是否是插入操作
+// UpsertOne 插入或更新单条记录，返回是否是插入操作。IsInserted 依赖 MySQL
+// ON DUPLICATE KEY UPDATE 的影响行数（插入 1、更新 2、未变化 0）
 func (r *GormRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (*UpsertResult, error) {
 	columns := make([]clause.Column, 0, len(opt.ConflictKvs))
 	for k := range opt.ConflictKvs {
@@ -219,35 +219,12 @@ func (r *GormRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions
 	}, nil
 }
 
-// buildUpdateG 构建带更新选项的泛型实例
-func (r *GormRepo[T]) buildUpdateG(ctx context.Context, opts ...IList[UpdateOptions]) gorm.Interface[T] {
-	_ = NewOptions(opts...)
-	var clauses []clause.Expression
-
-	//if o.Upsert {
-	//	conflictCols := o.OnConflictColumn
-	//	if len(conflictCols) == 0 {
-	//		conflictCols = []string{"id"}
-	//	}
-	//	columns := make([]clause.Column, len(conflictCols))
-	//	for i, col := range conflictCols {
-	//		columns[i] = clause.Column{Name: col}
-	//	}
-	//	clauses = append(clauses, clause.OnConflict{
-	//		Columns:   columns,
-	//		UpdateAll: true,
-	//	})
-	//}
-
-	return gorm.G[T](r.getDB(ctx), clauses...)
-}
-
 // DeleteOne 删除单条记录
 func (r *GormRepo[T]) DeleteOne(ctx context.Context, filter any) (*DeleteResult, error) {
 	g := gorm.G[T](r.getDB(ctx))
 	chain := r.applyFilterToChain(g, filter)
 	rowsAffected, err := chain.Limit(1).Delete(ctx)
-	return &DeleteResult{DeleteCount: int64(rowsAffected)}, err
+	return &DeleteResult{DeleteCount: int64(rowsAffected)}, wrapError(err)
 }
 
 // DeleteMany 删除多条记录
@@ -255,7 +232,7 @@ func (r *GormRepo[T]) DeleteMany(ctx context.Context, filter any) (*DeleteResult
 	g := gorm.G[T](r.getDB(ctx))
 	chain := r.applyFilterToChain(g, filter)
 	rowsAffected, err := chain.Delete(ctx)
-	return &DeleteResult{DeleteCount: int64(rowsAffected)}, err
+	return &DeleteResult{DeleteCount: int64(rowsAffected)}, wrapError(err)
 }
 
 func (r *GormRepo[T]) incrToUpdate(incr map[string]int) map[string]any {

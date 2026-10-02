@@ -1,103 +1,130 @@
 package httpx
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/mbeoliero/kit/log"
 	"github.com/mbeoliero/kit/utils/jsonx"
 	"resty.dev/v3"
 )
 
+// Bodies are logged at debug level and cut to this many bytes.
+const maxLoggedBody = 2048
+
+// sharedClient pools connections across every Client; per-Client headers are applied to
+// each request instead of the shared client.
+var sharedClient = sync.OnceValue(resty.New)
+
+// StatusError reports a response outside 2xx. The body has still been decoded into the
+// caller's response value when it was valid JSON.
+type StatusError struct {
+	Method     string
+	Url        string
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("httpx %s %s: status %d", e.Method, e.Url, e.StatusCode)
+}
+
 type Client struct {
 	disableLog bool
-	cli        *resty.Client
+	headers    map[string]string
+	authToken  string
 }
 
 var GetClient = func() *Client {
-	return &Client{
-		cli: resty.New(),
-	}
+	return &Client{}
 }
 
 var GetNoLogClient = func() *Client {
-	return &Client{
-		cli:        resty.New(),
-		disableLog: true,
-	}
+	return &Client{disableLog: true}
 }
 
 func (i *Client) SetHeader(key, val string) *Client {
-	i.cli.SetHeader(key, val)
+	if i.headers == nil {
+		i.headers = map[string]string{}
+	}
+	i.headers[key] = val
 	return i
 }
 
 func (i *Client) SetAuthToken(token string) *Client {
-	i.cli.SetAuthToken(token)
+	i.authToken = token
 	return i
 }
 
-func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) (err error) {
-	httpReq := i.cli.R().
-		SetHeader("Content-Type", "application/json")
-	httpReq.SetBody(req)
-
-	res, err := httpReq.
-		Post(url)
-	if err != nil {
-		if !i.disableLog {
-			log.CtxError(ctx, "httpx client post url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
-		}
-		return err
+func (i *Client) request(ctx context.Context) *resty.Request {
+	req := sharedClient().R().
+		SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetHeaders(maps.Clone(i.headers))
+	if i.authToken != "" {
+		req.SetAuthToken(i.authToken)
 	}
-
-	resp := res.String()
-	if !i.disableLog {
-		log.CtxInfo(ctx, "httpx client post url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
-	}
-
-	if len(resp) > 0 && bindResp != nil {
-		if err = sonic.UnmarshalString(resp, bindResp); err != nil {
-			log.CtxError(ctx, "httpx client post url [%s] resp: %s, err: %v", httpReq.URL, resp, err)
-			return fmt.Errorf("failed to unmarshal response body: %v", err)
-		}
-	}
-
-	return res.Err
+	return req
 }
 
-func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) (err error) {
-	httpReq := i.cli.R().
-		SetHeader("Content-Type", "application/json")
-	params, _ := toUrlValues(req)
-	httpReq.SetQueryParamsFromValues(params)
-	httpReq.SetResult(bindResp)
+func (i *Client) Post(ctx context.Context, url string, req any, bindResp any) error {
+	return i.do(ctx, i.request(ctx).SetBody(req), resty.MethodPost, url, req, bindResp)
+}
 
-	res, err := httpReq.
-		Get(url)
+func (i *Client) Get(ctx context.Context, url string, req any, bindResp any) error {
+	params, err := toUrlValues(req)
+	if err != nil {
+		return fmt.Errorf("httpx encode query: %w", err)
+	}
+	return i.do(ctx, i.request(ctx).SetQueryParamsFromValues(params), resty.MethodGet, url, req, bindResp)
+}
+
+func (i *Client) do(ctx context.Context, httpReq *resty.Request, method, rawUrl string, req, bindResp any) error {
+	begin := time.Now()
+	res, err := httpReq.Execute(method, rawUrl)
+	target := redactUrl(rawUrl)
 	if err != nil {
 		if !i.disableLog {
-			log.CtxError(ctx, "httpx client get url [%s] req: %v, err: %v", httpReq.URL, jsonx.MarshalToString(req), err)
+			log.CtxError(ctx, "httpx %s %s failed after %v: %v", method, target, time.Since(begin), err)
 		}
-		return err
+		return fmt.Errorf("httpx %s %s: %w", method, target, err)
 	}
 
-	resp := res.String()
+	body := res.Bytes()
 	if !i.disableLog {
-		log.CtxInfo(ctx, "httpx client get url [%s], status_code[%d] req: %v, resp: %v", httpReq.URL, res.StatusCode(), jsonx.MarshalToString(req), resp)
+		log.CtxInfo(ctx, "httpx %s %s status=%d latency=%v", method, target, res.StatusCode(), time.Since(begin))
+		log.CtxDebug(ctx, "httpx %s %s req: %s, resp: %s", method, target, truncate(jsonx.MarshalToString(req)), truncate(string(body)))
 	}
-
-	if len(resp) > 0 && bindResp != nil {
-		if err = sonic.UnmarshalString(resp, bindResp); err != nil {
-			log.CtxError(ctx, "httpx client get url [%s] resp: %v, err: %v", httpReq.URL, resp, err)
-			return fmt.Errorf("failed to unmarshal response body: %v", err)
+	if len(body) > 0 && bindResp != nil {
+		if err := json.Unmarshal(body, bindResp); err != nil && res.IsSuccess() {
+			return fmt.Errorf("httpx %s %s decode response: %w", method, target, err)
 		}
 	}
-	return res.Err
+	if !res.IsSuccess() {
+		return &StatusError{Method: method, Url: target, StatusCode: res.StatusCode(), Body: string(body)}
+	}
+	return nil
+}
+
+// redactUrl drops the query string, which may carry tokens or user data.
+func redactUrl(rawUrl string) string {
+	path, _, _ := strings.Cut(rawUrl, "?")
+	return path
+}
+
+func truncate(s string) string {
+	if len(s) <= maxLoggedBody {
+		return s
+	}
+	return s[:maxLoggedBody] + "...(truncated)"
 }
 
 func toUrlValues(req any) (url.Values, error) {
@@ -115,13 +142,14 @@ func toUrlValues(req any) (url.Values, error) {
 
 	m, ok := req.(map[string]any)
 	if !ok {
-		b, err := sonic.Marshal(req)
+		b, err := json.Marshal(req)
 		if err != nil {
 			return nil, err
 		}
-
-		m = make(map[string]any)
-		if err = sonic.Unmarshal(b, &m); err != nil {
+		// UseNumber keeps int64 values such as IDs exact instead of rounding through float64.
+		decoder := json.NewDecoder(bytes.NewReader(b))
+		decoder.UseNumber()
+		if err = decoder.Decode(&m); err != nil {
 			return nil, err
 		}
 	}

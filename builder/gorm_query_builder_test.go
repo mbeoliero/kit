@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"strings"
 	"testing"
 
 	"gorm.io/gorm/clause"
@@ -686,5 +687,25 @@ func TestGormQueryBuilder_Like_EmptyValue(t *testing.T) {
 	// 空值应该生成 "%%"
 	if likeExpr.Value != "%%" {
 		t.Errorf("expected pattern '%%%%', got '%v'", likeExpr.Value)
+	}
+}
+
+func TestGormQueryBuilder_LikeEscapesWildcards(t *testing.T) {
+	got := NewGormQueryBuilder().Like("name", `50%_off\`, MatchStartsWith).Build().(clause.Like)
+	if want := `50\%\_off\\%`; got.Value != want {
+		t.Fatalf("pattern = %v, want %s", got.Value, want)
+	}
+}
+
+func TestGormQueryBuilder_FieldOrderIsStable(t *testing.T) {
+	for range 20 {
+		and := NewGormQueryBuilder().Eq("b", 1).Eq("c", 1).Eq("a", 1).Build().(clause.AndConditions)
+		var cols []string
+		for _, expr := range and.Exprs {
+			cols = append(cols, expr.(clause.Eq).Column.(clause.Column).Name)
+		}
+		if strings.Join(cols, ",") != "a,b,c" {
+			t.Fatalf("columns = %v", cols)
+		}
 	}
 }

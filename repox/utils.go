@@ -12,7 +12,7 @@ func wrapError(err error) error {
 		return nil
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, mongo.ErrNoDocuments) {
-		return DataNotFound
+		return ErrDataNotFound
 	}
 	return err
 }

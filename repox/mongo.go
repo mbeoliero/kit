@@ -3,6 +3,7 @@ package repox
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -150,24 +151,16 @@ func (r *MongoRepo[T]) UpdateMany(ctx context.Context, filter any, update map[st
 	return &UpdateResult{UpdateCount: result.ModifiedCount}, nil
 }
 
-// UpsertOne 插入或更新单条记录，返回是否是插入操作
+// UpsertOne 插入或更新单条记录，返回是否是插入操作。未指定 Set 时用 create 的其余字段
+// 作为 $set；_id 只在插入时写入，Inc 中的字段交给 $inc
 func (r *MongoRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOptions) (*UpsertResult, error) {
-	// 根据冲突字段构建 filter
 	filter := bson.M{}
 	for col, val := range opt.ConflictKvs {
 		filter[col] = val
 	}
-
-	update := bson.M{}
-	if len(opt.Set) > 0 {
-		update["$set"] = opt.Set
-	}
-	if len(opt.Inc) > 0 {
-		update["$inc"] = opt.Inc
-	}
-	// 如果没有指定 Set，则用整个 create 对象作为 $set
-	if len(opt.Set) == 0 {
-		update["$set"] = create
+	update, err := upsertUpdate(create, opt)
+	if err != nil {
+		return nil, err
 	}
 
 	updateOpts := options.UpdateOne().SetUpsert(true)
@@ -180,6 +173,58 @@ func (r *MongoRepo[T]) UpsertOne(ctx context.Context, create T, opt UpsertOption
 		IsInserted:   result.UpsertedCount > 0,
 		RowsAffected: result.UpsertedCount + result.ModifiedCount,
 	}, nil
+}
+
+// upsertUpdate keeps $set, $inc and $setOnInsert disjoint: MongoDB rejects an update that
+// names one path twice, and rewriting _id on an existing document fails.
+func upsertUpdate[T any](create T, opt UpsertOptions) (bson.M, error) {
+	update := bson.M{}
+	if len(opt.Inc) > 0 {
+		update["$inc"] = opt.Inc
+	}
+	if len(opt.Set) > 0 {
+		update["$set"] = opt.Set
+		return update, nil
+	}
+
+	raw, err := bson.Marshal(create)
+	if err != nil {
+		return nil, fmt.Errorf("encode upsert document: %w", err)
+	}
+	var doc bson.M
+	if err := bson.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("decode upsert document: %w", err)
+	}
+	if id, ok := doc["_id"]; ok {
+		delete(doc, "_id")
+		if !isZeroId(id) {
+			update["$setOnInsert"] = bson.M{"_id": id}
+		}
+	}
+	for field := range opt.Inc {
+		delete(doc, field)
+	}
+	if len(doc) > 0 {
+		update["$set"] = doc
+	}
+	return update, nil
+}
+
+func isZeroId(id any) bool {
+	switch v := id.(type) {
+	case nil:
+		return true
+	case bson.ObjectID:
+		return v.IsZero()
+	case string:
+		return v == ""
+	case int32:
+		return v == 0
+	case int64:
+		return v == 0
+	default:
+		return false
+	}
 }
 
 // DeleteOne 删除单条记录
